@@ -1,7 +1,7 @@
 ---
 socrates_format: 2
 id: be44-standalone-foundation
-status: approved
+status: closed
 priority: 0
 category: infrastructure
 assignee:
