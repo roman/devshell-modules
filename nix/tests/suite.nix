@@ -1,13 +1,19 @@
 {
   devenvSource,
   evaluator,
+  gitHooksSource,
   pkgs,
+  projectSource,
 }:
 
 let
   evaluate = evaluator {
     inherit pkgs;
-    inputs.marker = "canonical-input";
+    inputs = {
+      git-hooks = gitHooksSource;
+      marker = "canonical-input";
+      self = projectSource;
+    };
   };
   merged = evaluate {
     modules = [
@@ -249,6 +255,89 @@ in
       }).shell.drvPath;
     expectedError.type = "ThrownError";
     expectedError.msg = ".*escapes the project root.*";
+  };
+
+  "test configured hooks auto-enable the adapter" = {
+    expr =
+      (evaluate {
+        modules = [
+          {
+            git-hooks.hooks.fixture = {
+              enable = true;
+              entry = "fixture-check";
+            };
+          }
+        ];
+      }).config.git-hooks.enable;
+    expected = true;
+  };
+
+  "test force installation is opt-in" = {
+    expr =
+      let
+        defaultResult = evaluate {
+          modules = [
+            {
+              git-hooks.hooks.fixture = {
+                enable = true;
+                entry = "fixture-check";
+              };
+            }
+          ];
+        };
+        forcedResult = evaluate {
+          modules = [
+            {
+              git-hooks = {
+                hooks.fixture = {
+                  enable = true;
+                  entry = "fixture-check";
+                };
+                install.force = true;
+              };
+            }
+          ];
+        };
+      in
+      {
+        default = defaultResult.config.git-hooks.install.force;
+        forced = forcedResult.config.git-hooks.install.force;
+      };
+    expected = {
+      default = false;
+      forced = true;
+    };
+  };
+
+  "test hook outputs use the selected runner and packages" = {
+    expr =
+      let
+        result = evaluate {
+          modules = [
+            {
+              git-hooks = {
+                hooks.fixture = {
+                  enable = true;
+                  entry = "fixture-check";
+                  package = pkgs.hello;
+                };
+                package = pkgs.prek;
+              };
+            }
+          ];
+        };
+      in
+      {
+        check = result.checks.git-hooks.drvPath != null;
+        packages = map (package: package.pname) result.config.packages;
+      };
+    expected = {
+      check = true;
+      packages = [
+        "prek"
+        "hello"
+      ];
+    };
   };
 
   "test rejects tasks" = unsupportedOptionTest "tasks";

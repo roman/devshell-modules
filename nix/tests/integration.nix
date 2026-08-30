@@ -1,11 +1,17 @@
-{ pkgs }:
+{
+  gitHooksSource,
+  pkgs,
+}:
 
 let
   # This check exercises runtime behavior that evaluation-only tests cannot:
   # script execution, setup ordering, and the resulting shell closures.
   evaluate = import ../lib {
     inherit pkgs;
-    inputs = { };
+    inputs = {
+      git-hooks = gitHooksSource;
+      self = ../..;
+    };
   };
   result = evaluate {
     modules = [
@@ -48,12 +54,60 @@ let
       }
     ];
   };
-  derivationClosure = pkgs.closureInfo { rootPaths = [ result.shell.inputDerivation ]; };
-  runtimeClosure = pkgs.closureInfo { rootPaths = [ result.shell ]; };
+  failingHook = pkgs.writeShellScript "reject-forbidden-fixture" ''
+    for fixture_path in "$@"; do
+      if grep -q forbidden "$fixture_path"; then
+        echo "forbidden fixture: $fixture_path" >&2
+        exit 1
+      fi
+    done
+  '';
+  hookModule = {
+    git-hooks = {
+      addGcRoot = false;
+      hooks.reject-forbidden = {
+        enable = true;
+        entry = toString failingHook;
+        files = "\\.fixture$";
+      };
+      rootSrc = ./fixtures/git-hooks;
+    };
+  };
+  hookResult = evaluate {
+    modules = [ hookModule ];
+  };
+  forcedHookResult = evaluate {
+    modules = [
+      hookModule
+      {
+        git-hooks.install.force = true;
+      }
+    ];
+  };
+  derivationClosure = pkgs.closureInfo {
+    rootPaths = [
+      result.shell.inputDerivation
+      hookResult.shell.inputDerivation
+    ];
+  };
+  runtimeClosure = pkgs.closureInfo {
+    rootPaths = [
+      result.shell
+      hookResult.shell
+    ];
+  };
 in
 pkgs.runCommand "strict-shell-integration"
   {
-    nativeBuildInputs = result.shell.nativeBuildInputs;
+    nativeBuildInputs = [
+      pkgs.git
+    ]
+    ++ result.shell.nativeBuildInputs
+    ++ hookResult.shell.nativeBuildInputs;
+    hookConfig = hookResult.config.git-hooks.configFile;
+    hookFixture = ./fixtures/git-hooks/failing.fixture;
+    testedHookShellHook = hookResult.shell.shellHook;
+    testedForcedHookShellHook = forcedHookResult.shell.shellHook;
     testedShellHook = result.shell.shellHook;
     testedUpdatedShellHook = updatedResult.shell.shellHook;
     unmanagedStoreTarget = pkgs.writeText "unmanaged-store-target" "unmanaged\n";
@@ -63,12 +117,22 @@ pkgs.runCommand "strict-shell-integration"
       eval "$testedShellHook"
     }
 
+    run_hook_shell_hook() {
+      eval "$testedHookShellHook"
+    }
+
+    run_forced_hook_shell_hook() {
+      eval "$testedForcedHookShellHook"
+    }
+
     # Verify package scripts and each supported generated-file shape.
     hello argument > script-output
     grep -E '^script-environment:argument:jq-' script-output
 
     export TMPDIR="$PWD/runtime"
     mkdir -p "$TMPDIR"
+    export HOME="$TMPDIR/home"
+    mkdir -p "$HOME"
     run_shell_hook
     diff -u <(printf 'setup\nentry\n') "$TMPDIR/setup-order"
     diff -u <(printf 'generated text\n') generated/text.txt
@@ -116,6 +180,78 @@ pkgs.runCommand "strict-shell-integration"
     test -L ../generated/text.txt
     test ! -e generated/text.txt
     cd ../..
+
+    # Shell entry installs the generated hook and rejects the staged fixture.
+    mkdir hook-project
+    cd hook-project
+    git init -q
+    git config user.email fixture@example.com
+    git config user.name Fixture
+    cp "$hookFixture" failing.fixture
+    git add failing.fixture
+    run_hook_shell_hook
+    if [ ! -L .pre-commit-config.yaml ]; then
+      echo "generated hook configuration is not a symlink" >&2
+      exit 1
+    fi
+    if [ ! -x .git/hooks/pre-commit ]; then
+      echo "installed pre-commit hook is not executable" >&2
+      exit 1
+    fi
+    sed -i '1c#!${pkgs.bash}/bin/bash' .git/hooks/pre-commit
+    if git commit -m fixture > commit-output 2>&1; then
+      echo "failing hook fixture unexpectedly committed" >&2
+      exit 1
+    fi
+    if ! grep -F 'forbidden fixture: failing.fixture' commit-output; then
+      sed -n '1,160p' commit-output >&2
+      exit 1
+    fi
+    cd ..
+
+    # Force installation replaces an existing config; the default preserves it.
+    mkdir force-project
+    cd force-project
+    git init -q
+    printf 'existing config\n' > .pre-commit-config.yaml
+    run_hook_shell_hook 2> preserve-warning
+    diff -u <(printf 'existing config\n') .pre-commit-config.yaml
+    test ! -e .git/hooks/pre-commit
+    grep -F 'Refusing to install because of an existing config' preserve-warning
+    run_forced_hook_shell_hook
+    test -L .pre-commit-config.yaml
+    test -x .git/hooks/pre-commit
+    printf 'stale hook\n' > .git/hooks/pre-commit
+    run_forced_hook_shell_hook
+    test -x .git/hooks/pre-commit
+    if grep -F 'stale hook' .git/hooks/pre-commit; then
+      echo "force installation preserved the stale hook" >&2
+      exit 1
+    fi
+    cd ..
+
+    # The generated all-files configuration rejects the same fixture.
+    mkdir all-files-project
+    cd all-files-project
+    git init -q
+    cp "$hookFixture" failing.fixture
+    git add failing.fixture
+    if prek run --all-files --config "$hookConfig" > all-files-output 2>&1; then
+      echo "all-files hook fixture unexpectedly passed" >&2
+      exit 1
+    fi
+    if ! grep -F 'forbidden fixture: failing.fixture' all-files-output; then
+      sed -n '1,160p' all-files-output >&2
+      exit 1
+    fi
+    cd ..
+
+    # Shell entry outside a Git repository reports the skipped installation.
+    mkdir non-git-project
+    cd non-git-project
+    run_hook_shell_hook 2> hook-warning
+    grep -F '.git not found; skipping installation.' hook-warning
+    cd ..
 
     # Neither shell closure can retain the excluded task runner.
     if grep -F devenv-tasks ${derivationClosure}/store-paths; then

@@ -32,6 +32,7 @@ let
       ./options.nix
       ./scripts.nix
       ./files.nix
+      ./git-hooks.nix
       {
         _module.args.pkgs = pkgsWithOverlays;
       }
@@ -96,5 +97,6 @@ in
 evaluation
 // {
   config = checkedConfig;
+  checks = checkedConfig._internal.checks;
   inherit shell shellHook;
 }

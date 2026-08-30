@@ -68,5 +68,12 @@ in
       internal = true;
       description = "Internal setup code run before user shell entry code.";
     };
+
+    _internal.checks = mkOption {
+      type = types.attrsOf types.package;
+      default = { };
+      internal = true;
+      description = "Checks exposed to flake consumers.";
+    };
   };
 }

@@ -1,4 +1,7 @@
-{ pkgs }:
+{
+  gitHooksSource,
+  pkgs,
+}:
 
 let
   devenvSource = builtins.fetchTree {
@@ -16,6 +19,8 @@ let
       };
       devenvSource = ${devenvSource};
       evaluator = import ${../.}/lib;
+      gitHooksSource = ${gitHooksSource};
+      projectSource = ${../..};
     }
   '';
   overlayFailureExpression = pkgs.writeText "overlay-recursion.nix" ''
@@ -23,7 +28,10 @@ let
       pkgs = import ${pkgs.path} {
         system = ${builtins.toJSON pkgs.stdenv.hostPlatform.system};
       };
-      evaluate = import ${../.}/lib { inherit pkgs; };
+      evaluate = import ${../.}/lib {
+        inherit pkgs;
+        inputs.git-hooks = ${gitHooksSource};
+      };
       result = evaluate {
         modules = [
           ({ pkgs, ... }: {
@@ -39,7 +47,10 @@ let
       pkgs = import ${pkgs.path} {
         system = ${builtins.toJSON pkgs.stdenv.hostPlatform.system};
       };
-      evaluate = import ${../.}/lib { inherit pkgs; };
+      evaluate = import ${../.}/lib {
+        inherit pkgs;
+        inputs.git-hooks = ${gitHooksSource};
+      };
       result = evaluate {
         modules = [
           ({ pkgs, ... }: {
@@ -58,7 +69,10 @@ let
       pkgs = import ${pkgs.path} {
         system = ${builtins.toJSON pkgs.stdenv.hostPlatform.system};
       };
-      evaluate = import ${../.}/lib { inherit pkgs; };
+      evaluate = import ${../.}/lib {
+        inherit pkgs;
+        inputs.git-hooks = ${gitHooksSource};
+      };
       result = evaluate {
         modules = [
           ({ pkgs, ... }: {
