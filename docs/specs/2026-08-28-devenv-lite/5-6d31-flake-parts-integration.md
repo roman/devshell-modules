@@ -1,7 +1,7 @@
 ---
 socrates_format: 2
 id: 6d31-flake-parts-integration
-status: approved
+status: closed
 priority: 0
 category: functional
 assignee:
