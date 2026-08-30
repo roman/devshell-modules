@@ -18,6 +18,7 @@
           pkgs = inputs.nixpkgs.legacyPackages.${system};
         in
         {
+          integration = import ./nix/tests/integration.nix { inherit pkgs; };
           nix-unit = import ./nix/tests { inherit pkgs; };
         }
       );
