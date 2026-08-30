@@ -1,7 +1,7 @@
 ---
 socrates_format: 2
 id: 6f37-declared-files
-status: approved
+status: closed
 priority: 1
 category: functional
 assignee:
