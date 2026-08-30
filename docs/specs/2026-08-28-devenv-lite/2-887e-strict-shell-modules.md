@@ -1,7 +1,7 @@
 ---
 socrates_format: 2
 id: 887e-strict-shell-modules
-status: approved
+status: closed
 priority: 0
 category: functional
 assignee:
