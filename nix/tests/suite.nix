@@ -165,6 +165,92 @@ in
     expected = [ "compatibility warning" ];
   };
 
+  "test rejects two file declarations for one normalized path" = {
+    expr =
+      (evaluate {
+        modules = [
+          {
+            files = {
+              "nested/../same.txt".text = "first";
+              "same.txt".text = "second";
+            };
+          }
+        ];
+      }).shell.drvPath;
+    expectedError.type = "ThrownError";
+    expectedError.msg = ".*multiple file declarations target `same.txt`.*";
+  };
+
+  "test rejects file declarations with overlapping paths" = {
+    expr =
+      (evaluate {
+        modules = [
+          {
+            files = {
+              "target".text = "file";
+              "target/child".text = "child";
+            };
+          }
+        ];
+      }).shell.drvPath;
+    expectedError.type = "ThrownError";
+    expectedError.msg = ".*file declarations overlap below `target`.*";
+  };
+
+  "test supports each declared file content shape" = {
+    expr =
+      let
+        result = evaluate {
+          modules = [
+            {
+              files = {
+                "settings.ini".ini.section.enabled = true;
+                "settings.json".json.enabled = true;
+                "settings.toml".toml.section.enabled = true;
+                "settings.yaml".yaml.enabled = true;
+                "source.txt".source = pkgs.writeText "source-fixture" "source";
+                "text.txt".text = "text";
+              };
+            }
+          ];
+        };
+      in
+      builtins.mapAttrs (_name: file: toString file._source != "") result.config.files;
+    expected = {
+      "settings.ini" = true;
+      "settings.json" = true;
+      "settings.toml" = true;
+      "settings.yaml" = true;
+      "source.txt" = true;
+      "text.txt" = true;
+    };
+  };
+
+  "test rejects file copy modes outside version one" = {
+    expr =
+      (evaluate {
+        modules = [
+          {
+            files."generated.txt" = {
+              copyMode = "copy";
+              text = "generated";
+            };
+          }
+        ];
+      }).shell.drvPath;
+    expectedError.type = "ThrownError";
+    expectedError.msg = ".*The option .files.*copyMode. does not exist.*";
+  };
+
+  "test rejects file paths outside the project" = {
+    expr =
+      (evaluate {
+        modules = [ { files."../outside.txt".text = "outside"; } ];
+      }).shell.drvPath;
+    expectedError.type = "ThrownError";
+    expectedError.msg = ".*escapes the project root.*";
+  };
+
   "test rejects tasks" = unsupportedOptionTest "tasks";
   "test rejects processes" = unsupportedOptionTest "processes";
   "test rejects services" = unsupportedOptionTest "services";

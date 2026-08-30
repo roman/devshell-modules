@@ -31,6 +31,7 @@ let
     modules = [
       ./options.nix
       ./scripts.nix
+      ./files.nix
       {
         _module.args.pkgs = pkgsWithOverlays;
       }
