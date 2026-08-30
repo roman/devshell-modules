@@ -1,7 +1,7 @@
 ---
 socrates_format: 2
 id: 9157-generated-git-hooks
-status: approved
+status: closed
 priority: 1
 category: functional
 assignee:
