@@ -230,6 +230,32 @@ pkgs.runCommand "strict-shell-integration"
     fi
     cd ..
 
+    # Linked worktrees must preserve the hooks used by the main checkout.
+    mkdir worktree-project
+    cd worktree-project
+    git init -q
+    git config user.email fixture@example.com
+    git config user.name Fixture
+    git commit --allow-empty -qm initial
+    run_hook_shell_hook
+    test -x .git/hooks/pre-commit
+    cp -a .git/hooks ../shared-hooks-before
+    git worktree add -qb linked ../linked-project
+    cd ../linked-project
+    run_hook_shell_hook > default-worktree-output 2>&1
+    diff -ru ../shared-hooks-before ../worktree-project/.git/hooks
+    test ! -e .pre-commit-config.yaml
+    diff -u <(printf 'Linked worktree; skipping hook installation to preserve shared hooks.\n') \
+      default-worktree-output
+    printf 'worktree config\n' > .pre-commit-config.yaml
+    mkdir subdirectory
+    cd subdirectory
+    run_forced_hook_shell_hook > ../forced-worktree-output 2>&1
+    diff -ru ../../shared-hooks-before ../../worktree-project/.git/hooks
+    diff -u <(printf 'worktree config\n') ../.pre-commit-config.yaml
+    diff -u ../default-worktree-output ../forced-worktree-output
+    cd ../..
+
     # The generated all-files configuration rejects the same fixture.
     mkdir all-files-project
     cd all-files-project

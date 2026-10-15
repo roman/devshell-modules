@@ -43,14 +43,20 @@ let
     shorthandOnlyDefinesConfig = true;
   };
   installationScript = ''
-    ${lib.optionalString config.git-hooks.install.force ''
-      if ${lib.boolToString config.git-hooks.install.enable} \
-        && ${lib.getExe config.git-hooks.gitPackage} rev-parse --git-dir &> /dev/null; then
-        git_root=$(${lib.getExe config.git-hooks.gitPackage} rev-parse --show-toplevel) || return 1
-        rm -f -- "$git_root/${config.git-hooks.configPath}" || return 1
-      fi
-    ''}
-    ${config.git-hooks.installationScript}
+    if ${lib.getExe config.git-hooks.gitPackage} rev-parse --git-dir &> /dev/null \
+      && [ "$(${lib.getExe config.git-hooks.gitPackage} rev-parse --git-dir)" \
+        != "$(${lib.getExe config.git-hooks.gitPackage} rev-parse --git-common-dir)" ]; then
+      echo 'Linked worktree; skipping hook installation to preserve shared hooks.'
+    else
+      ${lib.optionalString config.git-hooks.install.force ''
+        if ${lib.boolToString config.git-hooks.install.enable} \
+          && ${lib.getExe config.git-hooks.gitPackage} rev-parse --git-dir &> /dev/null; then
+          git_root=$(${lib.getExe config.git-hooks.gitPackage} rev-parse --show-toplevel) || return 1
+          rm -f -- "$git_root/${config.git-hooks.configPath}" || return 1
+        fi
+      ''}
+      ${config.git-hooks.installationScript}
+    fi
   '';
 in
 {
