@@ -46,6 +46,22 @@ let
     if ${lib.getExe config.git-hooks.gitPackage} rev-parse --git-dir &> /dev/null \
       && [ "$(${lib.getExe config.git-hooks.gitPackage} rev-parse --git-dir)" \
         != "$(${lib.getExe config.git-hooks.gitPackage} rev-parse --git-common-dir)" ]; then
+      ${lib.optionalString config.git-hooks.install.enable ''
+        git_root=$(${lib.getExe config.git-hooks.gitPackage} rev-parse --show-toplevel) || return 1
+        git_hook_config="$git_root/"${lib.escapeShellArg config.git-hooks.configPath}
+        # Shared hooks still need the configuration for this worktree's revision.
+        if [ "$(readlink "$git_hook_config")" != ${lib.escapeShellArg (toString config.git-hooks.configFile)} ]; then
+          if [ -L "$git_hook_config" ] || [ ! -e "$git_hook_config" ]; then
+            [ ! -L "$git_hook_config" ] || unlink "$git_hook_config" || return 1
+            ${
+              if config.git-hooks.addGcRoot then
+                ''nix-store --add-root "$git_hook_config" --indirect --realise ${config.git-hooks.configFile} || return 1''
+              else
+                ''ln -s -- ${config.git-hooks.configFile} "$git_hook_config" || return 1''
+            }
+          fi
+        fi
+      ''}
       echo 'Linked worktree; skipping hook installation to preserve shared hooks.'
     else
       ${lib.optionalString config.git-hooks.install.force ''

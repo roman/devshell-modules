@@ -84,6 +84,18 @@ let
       }
     ];
   };
+  worktreeHookResult = evaluate {
+    modules = [
+      hookModule
+      {
+        git-hooks.hooks.reject-forbidden.entry = pkgs.lib.mkForce (
+          toString (pkgs.writeShellScript "accept-worktree-fixture" ''
+            printf 'worktree hook ran\n' > worktree-hook-marker
+          '')
+        );
+      }
+    ];
+  };
   derivationClosure = pkgs.closureInfo {
     rootPaths = [
       result.shell.inputDerivation
@@ -108,6 +120,7 @@ pkgs.runCommand "strict-shell-integration"
     hookFixture = ./fixtures/git-hooks/failing.fixture;
     testedHookShellHook = hookResult.shell.shellHook;
     testedForcedHookShellHook = forcedHookResult.shell.shellHook;
+    testedWorktreeHookShellHook = worktreeHookResult.shell.shellHook;
     testedShellHook = result.shell.shellHook;
     testedUpdatedShellHook = updatedResult.shell.shellHook;
     unmanagedStoreTarget = pkgs.writeText "unmanaged-store-target" "unmanaged\n";
@@ -239,14 +252,27 @@ pkgs.runCommand "strict-shell-integration"
     git commit --allow-empty -qm initial
     run_hook_shell_hook
     test -x .git/hooks/pre-commit
+    sed -i '1c#!${pkgs.bash}/bin/bash' .git/hooks/pre-commit
+    # Resolve shared hooks from either checkout despite the worktree's .git file.
+    git config core.hooksPath "$PWD/.git/hooks"
     cp -a .git/hooks ../shared-hooks-before
     git worktree add -qb linked ../linked-project
     cd ../linked-project
-    run_hook_shell_hook > default-worktree-output 2>&1
+    testedHookShellHook="$testedWorktreeHookShellHook" \
+      run_hook_shell_hook > default-worktree-output 2>&1
     diff -ru ../shared-hooks-before ../worktree-project/.git/hooks
-    test ! -e .pre-commit-config.yaml
+    cp "$hookFixture" failing.fixture
+    git add failing.fixture
+    if ! git commit -m 'worktree fixture' > worktree-commit-output 2>&1; then
+      cat worktree-commit-output >&2
+      exit 1
+    fi
+    diff -u <(printf 'worktree hook ran\n') worktree-hook-marker
+    test -L .pre-commit-config.yaml
+    diff -ru ../shared-hooks-before ../worktree-project/.git/hooks
     diff -u <(printf 'Linked worktree; skipping hook installation to preserve shared hooks.\n') \
       default-worktree-output
+    rm .pre-commit-config.yaml
     printf 'worktree config\n' > .pre-commit-config.yaml
     mkdir subdirectory
     cd subdirectory
