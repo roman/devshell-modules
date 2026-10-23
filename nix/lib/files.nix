@@ -63,7 +63,7 @@ let
 
       # A stable store name provides ownership evidence without a state database.
       config._source = pkgs.runCommandLocal managedName { } ''
-        ln -s -- ${lib.escapeShellArg (toString generatedSource)} "$out"
+        ln -s -- ${lib.escapeShellArg "${generatedSource}"} "$out"
       '';
     };
 

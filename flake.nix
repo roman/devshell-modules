@@ -31,6 +31,10 @@
           pkgs = inputs.nixpkgs.legacyPackages.${system};
         in
         {
+          files-source = import ./nix/tests/files-source.nix {
+            inherit pkgs;
+            gitHooksSource = inputs.git-hooks;
+          };
           integration = import ./nix/tests/integration.nix {
             inherit pkgs;
             gitHooksSource = inputs.git-hooks;
